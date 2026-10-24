@@ -1,17 +1,18 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui="quiet-20261024">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#101113">
+  <meta name="theme-color" content="#262624">
+  <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Codex">
   <title>Codex · 手机</title>
   <link rel="icon" href="/apple-touch-icon.png?v=20261020b" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20261020b">
-  <link rel="stylesheet" href="/app.css?v=20261021-usage2">
-  <script src="/app.js?v=20261021-usage2" defer></script>
+  <link rel="stylesheet" href="/app.css?v=20261024-quiet">
+  <script src="/app.js?v=20261024-quiet" defer></script>
 </head>
 <body>
   <main id="app">
@@ -23,27 +24,27 @@
     </header>
     <div id="banner" role="status" hidden></div>
     <section id="messages" aria-label="对话消息" tabindex="-1">
-      <div class="welcome"><div class="brand">✳</div><h1>把事情交给 Codex</h1><p>选择电脑上的对话，或开始一件新事。</p></div>
+      <div class="welcome"><div class="brand" aria-hidden="true">›_</div><h1>想做点什么？</h1><p>写下一个想法，或接着电脑上的对话。</p></div>
     </section>
     <button id="bottom" class="jump" aria-label="回到最新消息" hidden>↓ 最新消息</button>
     <section id="requests" aria-label="需要你处理" hidden></section>
     <footer id="composer">
+      <div class="composer-meta"><button id="model-button" class="model-button" aria-label="选择模型与思考深度">使用当前配置 <span>⌄</span></button></div>
       <div class="composer-box">
         <div id="attachments" class="attachment-rail" aria-label="待发送附件" hidden></div>
         <div id="attachment-menu" class="attachment-menu" hidden>
-          <button id="add-photo" type="button">照片 / 图片</button>
-          <button id="add-file" type="button">文件 / 资料</button>
+          <button id="add-photo" type="button"><svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 5"/></svg>照片</button>
+          <button id="add-file" type="button"><svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h9l5 5v13H5zM14 3v6h5M9 14h6M9 17h5"/></svg>文件</button>
         </div>
         <input id="photo-input" type="file" accept="image/*" multiple hidden>
         <input id="file-input" type="file" multiple hidden>
-        <textarea id="prompt" rows="1" placeholder="给 Codex 发消息…" aria-label="消息内容"></textarea>
-        <div class="composer-tools">
-          <button id="attach" class="icon-button" type="button" aria-label="添加图片或文件" aria-expanded="false">＋</button>
-          <button id="model-button" class="model-button" aria-label="选择模型">使用当前配置 <span>⌄</span></button>
+        <div class="composer-entry">
+          <button id="attach" class="icon-button" type="button" aria-label="添加图片或文件" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <textarea id="prompt" rows="1" placeholder="给 Codex 发消息" aria-label="消息内容" enterkeyhint="enter"></textarea>
           <span id="draft-status"></span>
           <button id="keyboard" class="icon-button" aria-label="收起键盘" hidden>✓</button>
-          <button id="send" class="send" aria-label="发送消息" disabled><svg viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v13"/></svg></button>
-          <button id="stop" class="send stop" aria-label="停止当前任务" hidden><svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
+          <button id="send" class="send" aria-label="发送消息" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v13"/></svg></button>
+          <button id="stop" class="send stop" aria-label="停止当前任务" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
         </div>
       </div>
       <div id="usage-bar" class="usage-bar" hidden>
@@ -56,17 +57,17 @@
   </main>
   <div id="backdrop" hidden></div>
   <aside id="drawer" aria-label="对话列表" inert>
-    <div class="drawer-top"><div><small>你的电脑</small><h2>Codex</h2></div><button id="close-drawer" class="icon-button" aria-label="关闭对话列表">✕</button></div>
-    <input id="search" type="search" placeholder="搜索对话" aria-label="搜索对话">
+    <div class="drawer-top"><div><small>CODEX · 你的工作空间</small><h2>对话</h2></div><button id="close-drawer" class="icon-button" aria-label="关闭对话列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div>
+    <div class="drawer-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg><input id="search" type="search" placeholder="搜索对话" aria-label="搜索对话"></div>
     <button id="drawer-new" class="new-chat">＋ 新建对话</button>
     <label class="project-filter-label" for="project-filter">项目分类</label>
     <select id="project-filter" aria-label="筛选项目"><option value="">全部项目</option></select>
     <div id="threads" aria-label="所有对话"></div>
     <button id="load-more" class="secondary" hidden>加载更早的对话</button>
-    <div class="drawer-footer"><span class="status-dot"></span><span id="host-label">本机 Codex</span><button id="refresh" aria-label="刷新对话列表">↻</button></div>
+    <div class="drawer-footer"><span class="status-dot"></span><span id="host-label">本机 Codex</span><button id="refresh" aria-label="刷新对话列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 9a7 7 0 1 0 0 6M19 4v5h-5"/></svg></button></div>
   </aside>
   <dialog id="settings">
-    <div class="sheet-top"><h2>对话设置</h2><button class="icon-button close-sheet" aria-label="关闭设置">✕</button></div>
+    <div class="sheet-top"><h2>对话设置</h2><button class="icon-button close-sheet" aria-label="关闭设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div>
     <label>项目位置<select id="project"></select></label>
     <label>模型<select id="model"></select></label>
     <label>思考深度<select id="effort"></select></label>
@@ -74,7 +75,7 @@
     <button id="apply-settings" class="primary">完成</button>
   </dialog>
   <dialog id="usage-dialog" class="usage-dialog" aria-labelledby="usage-title">
-    <div class="sheet-top"><h2 id="usage-title">官方额度</h2><button id="usage-close" class="icon-button" type="button" aria-label="关闭额度详情">✕</button></div>
+    <div class="sheet-top"><h2 id="usage-title">官方额度</h2><button id="usage-close" class="icon-button" type="button" aria-label="关闭额度详情"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div>
     <div class="usage-details">
       <section class="usage-detail" aria-labelledby="usage-five-detail-title">
         <div class="usage-detail-head"><strong id="usage-five-detail-title">5小时窗口</strong><b id="usage-five-detail-value">—</b></div>
@@ -92,7 +93,7 @@
     <button id="usage-refresh" class="primary" type="button">手动刷新</button>
   </dialog>
   <dialog id="pairing" aria-labelledby="pairing-title">
-    <div class="pair-brand">✳</div><h2 id="pairing-title">连接你的 Codex</h2><p>请在 Mac 上双击「Codex手机连接」获取链接，再粘贴到下面，恢复这台手机的授权。</p>
+    <div class="pair-brand" aria-hidden="true">›_</div><h2 id="pairing-title">把 Codex 带在身边</h2><p>请在 Mac 上双击「Codex手机连接」获取链接，再粘贴到下面，恢复这台手机的授权。</p>
     <form id="pair-form">
       <label class="pair-label" for="pair-url">Mac 配对链接</label>
       <input id="pair-url" type="password" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="粘贴 Mac 生成的链接" aria-describedby="pair-help pair-error">

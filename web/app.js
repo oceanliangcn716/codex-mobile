@@ -620,7 +620,7 @@
         if(thread.active){const running=document.createElement('span');running.className='thread-running';running.setAttribute('aria-label','正在运行');row.append(running);}
         const text=document.createElement('span');text.className='thread-label';
         const title=document.createElement('strong');title.textContent=thread.title||'未命名对话';
-        const meta=document.createElement('small');meta.textContent=[shortPath(thread.cwd),formatDate(thread.updatedAt)].filter(Boolean).join(' · ');
+        const meta=document.createElement('small');meta.textContent=formatDate(thread.updatedAt);
         text.append(title,meta);row.append(text);group.append(row);
       });els.threads.append(group);
     });
@@ -700,7 +700,7 @@
 
   function resizePrompt() {
     els.prompt.style.height = 'auto';
-    const height = Math.min(Math.max(els.prompt.scrollHeight, 39), 150);
+    const height = Math.min(Math.max(els.prompt.scrollHeight, 42), 150);
     els.prompt.style.height = `${height}px`;
     els.prompt.style.overflowY = els.prompt.scrollHeight > 150 ? 'auto' : 'hidden';
   }
@@ -722,7 +722,7 @@
   function updateCurrentHeader() {
     els.title.textContent = appState.currentThread && appState.currentThread.title
       ? appState.currentThread.title
-      : 'Codex';
+      : '新对话';
     updateConnectionUi();
     updateComposerState();
   }
@@ -881,7 +881,7 @@
       copy.type = 'button';
       copy.className = 'copy-message';
       copy.setAttribute('aria-label', '复制这条消息');
-      copy.textContent = '复制';
+      copy.append(createStaticToolSvg('copy'), document.createTextNode('复制'));
       copy.addEventListener('click', async () => {
         if (await copyText(text)) {
           showToast('已复制');
@@ -962,6 +962,10 @@
     ]),
     other: Object.freeze([
       ['path', { d: 'm12 3 1.6 6.4L20 11l-6.4 1.6L12 19l-1.6-6.4L4 11l6.4-1.6z' }]
+    ]),
+    copy: Object.freeze([
+      ['rect', { x: '8', y: '8', width: '12', height: '12', rx: '2' }],
+      ['path', { d: 'M16 5V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1' }]
     ]),
     chevron: Object.freeze([
       ['path', { d: 'm9 5 7 7-7 7' }]
@@ -1051,11 +1055,12 @@
     welcome.className = 'welcome';
     const brand = document.createElement('div');
     brand.className = 'brand';
-    brand.textContent = '✳';
+    brand.textContent = '›_';
+    brand.setAttribute('aria-hidden', 'true');
     const heading = document.createElement('h1');
-    heading.textContent = '把事情交给 Codex';
+    heading.textContent = '想做点什么？';
     const description = document.createElement('p');
-    description.textContent = '选择电脑上的对话，或开始一件新事。';
+    description.textContent = '写下一个想法，或接着电脑上的对话。';
     welcome.append(brand, heading, description);
     els.messages.append(welcome);
   }
@@ -1141,8 +1146,15 @@
     return merged;
   }
 
+  let currentRefresh = null;
   async function refreshCurrentThread() {
     if (!appState.currentId) return;
+    if (currentRefresh) return currentRefresh;
+    currentRefresh = refreshCurrentThreadNow().finally(() => { currentRefresh = null; });
+    return currentRefresh;
+  }
+
+  async function refreshCurrentThreadNow() {
     const id = appState.currentId;
     try {
       const thread = await fetchThread(id);
@@ -1286,9 +1298,7 @@
     els.model.value = model;
     populateEfforts(model, effort);
     els.effort.previousSibling.textContent = thread?.active ? '后续思考深度' : '思考深度';
-    els.providerNote.textContent = appState.config.provider
-      ? `沿用 Mac 上的 ${appState.config.provider} 配置与连接设置。`
-      : '沿用 Mac 上的 Codex 配置与连接设置。';
+    els.providerNote.textContent = '沿用 Mac 上的连接设置。';
     if(thread?.active) els.providerNote.textContent += ` 当前轮次：${modelLabel(thread.activeModel||thread.model)} · ${effortLabel(thread.activeEffort)}。设置修改用于下一轮。`;
   }
 
@@ -1362,7 +1372,7 @@
     const t=appState.currentThread;
     const model=t?(t.active?t.activeModel||t.model:t.model):appState.selected.model||appState.config.model;
     const effort=t?(t.active?t.activeEffort:t.effort):appState.selected.effort||appState.config.effort;
-    els.modelButton.firstChild.textContent=(model?modelLabel(model):'当前模型')+' · '+effortLabel(effort)+' ';
+    els.modelButton.firstChild.textContent=(model?modelLabel(model):'当前模型')+' · 思考 '+effortLabel(effort)+' ';
     els.modelButton.setAttribute('aria-label','模型与思考深度：'+els.modelButton.textContent);
     els.send.disabled=(!els.prompt.value.trim()&&!currentAttachments().length)||appState.sendBusy||appState.uploadCount>0;
     els.attach.disabled=appState.sendBusy||appState.uploadCount>0;
@@ -1575,6 +1585,7 @@
       void loadUsage();
     } else if (payload.type === 'state' || payload.type === 'connection') {
       scheduleStateRefresh();
+      if (payload.type === 'connection') void refreshCurrentThread();
     }
   }
 
@@ -1588,6 +1599,7 @@
       appState.eventAuthProbeDone = false;
       appState.eventOpen = true;
       updateEventBanner();
+      void refreshCurrentThread();
     };
     source.onmessage = (event) => {
       if (appState.eventSource !== source) return;
@@ -1684,8 +1696,9 @@
     els.usageDialog.addEventListener('close', () => els.usageOpen.setAttribute('aria-expanded', 'false'));
     els.usageRefresh.addEventListener('click', () => { void loadUsage(true); });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') void loadUsage();
+      if (document.visibilityState === 'visible') { void loadUsage(); recoverSync(); }
     });
+    for (const name of ['pageshow', 'online', 'focus']) window.addEventListener(name, recoverSync);
     syncDrawerLayout();
     window.addEventListener('resize', handleWindowResize, { passive: true });
     if (window.visualViewport) {
@@ -1694,9 +1707,23 @@
     }
   }
 
+  function recoverSync() {
+    if (document.visibilityState === 'hidden') return;
+    scheduleStateRefresh();
+    void refreshCurrentThread();
+  }
+
   async function init() {
     bindEvents();
     updateViewport();
+    if (typeof ResizeObserver === 'function') {
+      const composerObserver = new ResizeObserver(() => {
+        document.documentElement.style.setProperty('--composer-h', `${els.composer.getBoundingClientRect().height}px`);
+        document.documentElement.style.setProperty('--requests-h', `${els.requests.hidden ? 0 : els.requests.getBoundingClientRect().height + 12}px`);
+      });
+      composerObserver.observe(els.composer);
+      composerObserver.observe(els.requests);
+    }
     renderThread(null, { initial: true });
     const token = consumePairToken();
     if (token) await pairWithToken(token);
@@ -1711,6 +1738,8 @@
       }
     }
     connectEvents();
+    // Safari may suspend SSE without delivering an error. Reconcile the open chat.
+    window.setInterval(recoverSync, 5000);
     appState.isInitialRender = false;
     updateComposerState();
   }
