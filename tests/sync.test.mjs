@@ -40,3 +40,11 @@ test('fallback history refresh replaces cached turns with new disk contents', as
   assert.equal(actual.turns.length,1);
   assert.equal(actual.turns[0].items[0],'new');
 });
+
+test('a lost desktop connection cannot silently start a second writer',async()=>{
+  let started=false;
+  const context=vm.createContext({own:new Set(),ipc:{clientId:null},validateId:()=>{},uploads:{input:()=>({input:[]})},engine:{call:()=>{started=true;}}});
+  vm.runInContext(source.slice(source.indexOf('async function sendMessage'),source.indexOf('\nasync function stopThread'))+'\nthis.send = sendMessage;',context);
+  await assert.rejects(context.send({id:'chat',text:'hello'}),/连接正在恢复/);
+  assert.equal(started,false);
+});
