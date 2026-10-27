@@ -11,8 +11,8 @@
   <title>Codex · 手机</title>
   <link rel="icon" href="/apple-touch-icon.png?v=20261020b" type="image/png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20261020b">
-  <link rel="stylesheet" href="/app.css?v=20261024-quiet">
-  <script src="/app.js?v=20261024-quiet" defer></script>
+  <link rel="stylesheet" href="/app.css?v=20261027-sheet-motion">
+  <script src="/app.js?v=20261027-sheet-motion" defer></script>
 </head>
 <body>
   <main id="app">
@@ -29,7 +29,7 @@
     <button id="bottom" class="jump" aria-label="回到最新消息" hidden>↓ 最新消息</button>
     <section id="requests" aria-label="需要你处理" hidden></section>
     <footer id="composer">
-      <div class="composer-meta"><button id="model-button" class="model-button" aria-label="选择模型与思考深度">使用当前配置 <span>⌄</span></button></div>
+      <div class="composer-meta"><button id="model-button" class="model-button" aria-label="选择模型与思考深度">使用当前配置 <span>⌄</span></button><button id="restore-questions" class="restore-questions" type="button" hidden></button></div>
       <div class="composer-box">
         <div id="attachments" class="attachment-rail" aria-label="待发送附件" hidden></div>
         <div id="attachment-menu" class="attachment-menu" hidden>
@@ -55,18 +55,19 @@
       </div>
     </footer>
   </main>
+  <div id="drawer-edge" aria-hidden="true"></div>
   <div id="backdrop" hidden></div>
   <aside id="drawer" aria-label="对话列表" inert>
-    <div class="drawer-top"><div><small>CODEX · 你的工作空间</small><h2>对话</h2></div><button id="close-drawer" class="icon-button" aria-label="关闭对话列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div>
+    <div class="drawer-top"><h2>对话</h2><div class="drawer-actions"><button id="drawer-new" class="drawer-new" type="button">＋ 新对话</button><button id="close-drawer" class="icon-button" aria-label="关闭对话列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div></div>
     <div class="drawer-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg><input id="search" type="search" placeholder="搜索对话" aria-label="搜索对话"></div>
-    <button id="drawer-new" class="new-chat">＋ 新建对话</button>
-    <label class="project-filter-label" for="project-filter">项目分类</label>
     <select id="project-filter" aria-label="筛选项目"><option value="">全部项目</option></select>
     <div id="threads" aria-label="所有对话"></div>
     <button id="load-more" class="secondary" hidden>加载更早的对话</button>
     <div class="drawer-footer"><span class="status-dot"></span><span id="host-label">本机 Codex</span><button id="refresh" aria-label="刷新对话列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 9a7 7 0 1 0 0 6M19 4v5h-5"/></svg></button></div>
   </aside>
-  <dialog id="settings">
+  <div id="sheet-mask" aria-hidden="true" hidden></div>
+  <dialog id="settings" class="swipe-sheet">
+    <button class="sheet-handle" type="button" aria-label="收起对话设置"></button>
     <div class="sheet-top"><h2>对话设置</h2><button class="icon-button close-sheet" aria-label="关闭设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div>
     <label>项目位置<select id="project"></select></label>
     <label>模型<select id="model"></select></label>
@@ -74,7 +75,8 @@
     <p id="provider-note" class="sheet-note">沿用 Mac 上的 Codex 配置与中转站设置。</p>
     <button id="apply-settings" class="primary">完成</button>
   </dialog>
-  <dialog id="usage-dialog" class="usage-dialog" aria-labelledby="usage-title">
+  <dialog id="usage-dialog" class="usage-dialog swipe-sheet" aria-labelledby="usage-title">
+    <button class="sheet-handle" type="button" aria-label="收起额度详情"></button>
     <div class="sheet-top"><h2 id="usage-title">官方额度</h2><button id="usage-close" class="icon-button" type="button" aria-label="关闭额度详情"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg></button></div>
     <div class="usage-details">
       <section class="usage-detail" aria-labelledby="usage-five-detail-title">

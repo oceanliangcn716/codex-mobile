@@ -14,6 +14,7 @@
     messages: $('messages'),
     bottom: $('bottom'),
     requests: $('requests'),
+    restoreQuestions: $('restore-questions'),
     composer: $('composer'),
     prompt: $('prompt'),
     modelButton: $('model-button'),
@@ -28,6 +29,7 @@
     usageWeeklyValue: $('usage-weekly-value'),
     usageWeeklyFill: $('usage-weekly-fill'),
     usageDialog: $('usage-dialog'),
+    sheetMask: $('sheet-mask'),
     usageClose: $('usage-close'),
     usageFiveDetailValue: $('usage-five-detail-value'),
     usageFiveDetailFill: $('usage-five-detail-fill'),
@@ -80,6 +82,7 @@
     requestAnswers: new Map(),
     requestsSignature:'',
     submittedRequests:new Set(), submittingRequests:new Set(),
+    dismissedQuestions:readDismissedQuestions(),
     attachmentDrafts:new Map(), projectFilter:'',
     uploadCount:0,
     sendBusy: false,
@@ -105,6 +108,7 @@
   };
 
   const DRAFT_PREFIX = 'codex-mobile-draft:';
+  const sheetControllers = new WeakMap();
 
   class ApiError extends Error {
     constructor(message, status) {
@@ -361,17 +365,13 @@
       return;
     }
     renderUsage();
-    try {
-      els.usageDialog.showModal();
-    } catch (_error) {
-      els.usageDialog.setAttribute('open', '');
-    }
+    presentSheet(els.usageDialog);
     els.usageOpen.setAttribute('aria-expanded', 'true');
     void loadUsage();
   }
 
   function closeUsageDialogFromUi() {
-    closeUsageDialog();
+    dismissSheet(els.usageDialog);
   }
 
   function setBanner(message, visible = Boolean(message)) {
@@ -612,8 +612,10 @@
     groups.forEach((rows,key)=>{
       const project=appState.projects.find(p=>p.id===key);
       const group=document.createElement('details');group.className='project-group';group.open=true;
-      const summary=document.createElement('summary');summary.textContent=`${project?.label||rows[0].projectLabel||'未归类'} · ${rows.length}`;group.append(summary);
-      if(project?.path){const add=document.createElement('button');add.className='project-new';add.textContent='＋ 在此项目新建';add.onclick=()=>{appState.selected.cwd=project.path;newDraft(true);};group.append(add);}
+      const summary=document.createElement('summary');
+      const label=document.createElement('span');label.className='project-label';label.textContent=`${project?.label||rows[0].projectLabel||'未归类'} · ${rows.length}`;summary.append(label);
+      if(project?.path){const add=document.createElement('button');add.type='button';add.className='project-new';add.textContent='＋';add.setAttribute('aria-label',`在 ${project.label||'此项目'} 新建对话`);add.title='在此项目新建对话';add.onclick=event=>{event.preventDefault();event.stopPropagation();appState.selected.cwd=project.path;newDraft(true);};summary.append(add);}
+      group.append(summary);
       rows.forEach(thread=>{
         const row=document.createElement('button');row.type='button';row.className=`thread-row${thread.id===appState.currentId?' active':''}`;
         row.setAttribute('aria-label',`打开对话 ${thread.title||'未命名对话'}`);row.onclick=()=>selectThread(thread.id);
@@ -632,11 +634,13 @@
     document.body.classList.add('drawer-open');
     els.menu.setAttribute('aria-expanded', 'true');
     els.drawer.removeAttribute('inert');
+    els.backdrop.hidden = window.matchMedia('(min-width: 800px)').matches;
   }
 
   function closeDrawer() {
     document.body.classList.remove('drawer-open');
     els.menu.setAttribute('aria-expanded', 'false');
+    els.backdrop.hidden = true;
     syncDrawerLayout();
   }
 
@@ -648,13 +652,305 @@
       document.body.classList.remove('drawer-open');
       els.menu.setAttribute('aria-expanded', 'false');
       els.drawer.removeAttribute('inert');
+      els.backdrop.hidden = true;
       return;
     }
     if (changed || !document.body.classList.contains('drawer-open')) {
       document.body.classList.remove('drawer-open');
       els.menu.setAttribute('aria-expanded', 'false');
       els.drawer.setAttribute('inert', '');
+      els.backdrop.hidden = true;
     }
+  }
+
+  function bindDrawerGestures() {
+    const edge = $('drawer-edge');
+    let drag = null, suppressClickUntil = 0;
+    const blocked = target => target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), pre, table, [data-no-swipe]');
+
+    function finish(cancelled = false) {
+      if (!drag) return;
+      const current = drag;
+      drag = null;
+      if (current.locked) {
+        const distance = current.open ? -current.dx : current.dx;
+        // A deliberate short flick works; a tiny accidental drag springs back.
+        const flick = distance > 24 && performance.now() - current.started < 250;
+        const commit = !cancelled && (distance >= Math.min(96, current.width * .28) || flick);
+        const open = commit ? !current.open : current.open;
+        document.body.classList.remove('drawer-dragging');
+        if (open) openDrawer(); else closeDrawer();
+        els.drawer.style.removeProperty('transform');
+        els.backdrop.style.removeProperty('opacity');
+        suppressClickUntil = performance.now() + 400;
+      }
+      if (current.surface.hasPointerCapture(current.id)) current.surface.releasePointerCapture(current.id);
+    }
+
+    function start(event) {
+      if (drag) { finish(true); return; }
+      if (!event.isPrimary || event.button !== 0 || window.matchMedia('(min-width: 800px)').matches || document.querySelector('dialog[open]') || blocked(event.target)) return;
+      const open = document.body.classList.contains('drawer-open');
+      if (!open && event.currentTarget !== edge) return;
+      drag = { id:event.pointerId, surface:event.currentTarget, open, x:event.clientX, y:event.clientY, dx:0, width:els.drawer.getBoundingClientRect().width, started:performance.now(), locked:false };
+      // Capture only after movement: taps retain their original button target.
+    }
+
+    function move(event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.locked) {
+        if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { finish(true); return; }
+        if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+        if (drag.open ? dx >= 0 : dx <= 0) { finish(true); return; }
+        drag.locked = true;
+        drag.surface.setPointerCapture(drag.id);
+        document.body.classList.add('drawer-dragging');
+        els.drawer.removeAttribute('inert');
+        els.backdrop.hidden = false;
+      }
+      if (event.cancelable) event.preventDefault();
+      drag.dx = dx;
+      const offset = Math.max(-drag.width, Math.min(0, (drag.open ? 0 : -drag.width) + dx));
+      els.drawer.style.transform = `translateX(${offset}px)`;
+      els.backdrop.style.opacity = String(1 + offset / drag.width);
+    }
+
+    for (const surface of [edge, els.drawer, els.backdrop]) {
+      surface.addEventListener('pointerdown', start);
+      // Safari reserves its screen-edge back gesture unless touchstart is cancelled.
+      surface.addEventListener('touchstart', event => {
+        if (event.touches.length !== 1) { finish(true); return; }
+        if (surface === edge && event.touches[0].clientX <= 20 && !document.querySelector('dialog[open]') && event.cancelable) event.preventDefault();
+      }, {passive:false});
+    }
+    document.addEventListener('pointermove', move, {passive:false});
+    document.addEventListener('pointerup', event => {
+      if (event.pointerId !== drag?.id) return;
+      move(event);
+      finish();
+    });
+    document.addEventListener('pointercancel', event => { if (event.pointerId === drag?.id) finish(true); });
+    document.addEventListener('lostpointercapture', event => { if (event.pointerId === drag?.id) finish(true); });
+    document.addEventListener('pointerdown', () => { suppressClickUntil = 0; }, true);
+    document.addEventListener('click', event => {
+      if (performance.now() < suppressClickUntil) { event.preventDefault(); event.stopPropagation(); }
+    }, true);
+    window.addEventListener('resize', () => finish(true), {passive:true});
+    window.addEventListener('blur', () => finish(true));
+    document.addEventListener('visibilitychange', () => { if (document.hidden) finish(true); });
+  }
+
+  function presentSheet(sheet) {
+    const controller = sheetControllers.get(sheet);
+    if (controller) return controller.show();
+    try { sheet.showModal(); } catch { sheet.setAttribute('open', ''); }
+  }
+
+  function dismissSheet(sheet) {
+    const controller = sheetControllers.get(sheet);
+    if (controller) return controller.dismiss();
+    sheet.close();
+  }
+
+  function bindSheetGestures(sheet, close) {
+    let drag = null, suppressClickUntil = 0, ignorePointerUntil = 0;
+    let motion = null, shadeMotion = null, frame = 0, generation = 0, offset = 0, height = 1, phase = 'idle';
+    const mask = els.sheetMask;
+    const interactive = 'input, textarea, select, a, button:not(.sheet-handle), [contenteditable]:not([contenteditable="false"]), pre, table';
+    const transform = value => `translate3d(0, calc(-100% + ${value}px), 0)`;
+    const shade = value => Math.max(0, Math.min(1, 1 - Math.max(0, value) / height));
+    function paint(value) {
+      offset = value;
+      sheet.style.transform = transform(value);
+      if (mask.dataset.owner === sheet.id) mask.style.opacity = String(shade(value));
+    }
+    function stopMotion(capture = true) {
+      if (frame) { cancelAnimationFrame(frame); frame = 0; }
+      if (motion && capture && sheet.open) {
+        // Sample once when a finger catches an animation, never on every move.
+        const bottom = parseFloat(getComputedStyle(sheet).top);
+        paint(sheet.getBoundingClientRect().bottom - bottom);
+      }
+      generation++;
+      motion?.cancel(); shadeMotion?.cancel();
+      motion = shadeMotion = null;
+      sheet.classList.remove('sheet-settling');
+    }
+    function cleanup() {
+      stopMotion(false);
+      drag = null; phase = 'idle'; offset = 0;
+      sheet.classList.remove('sheet-dragging');
+      sheet.style.removeProperty('transform');
+      if (mask.dataset.owner === sheet.id) {
+        mask.hidden = true;
+        mask.style.removeProperty('opacity');
+        mask.style.removeProperty('will-change');
+        delete mask.dataset.owner;
+      }
+    }
+    function settle(target, velocity = 0, closing = false) {
+      stopMotion(false);
+      const from = offset, token = generation;
+      phase = closing ? 'closing' : 'settling';
+      sheet.classList.remove('sheet-dragging');
+      const complete = () => {
+        if (token !== generation) return;
+        paint(target);
+        stopMotion(false);
+        phase = 'idle';
+        if (closing) { close(); cleanup(); }
+        else {
+          sheet.style.removeProperty('transform');
+          if (mask.dataset.owner === sheet.id) mask.style.removeProperty('will-change');
+        }
+      };
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !sheet.animate || Math.abs(target - from) < .5) { complete(); return; }
+      const duration = closing ? Math.max(180, Math.min(290, (target - from) / Math.max(velocity, 1.5))) : 400;
+      const frames = [], shades = [];
+      for (let i = 0; i <= 48; i++) {
+        const u = i / 48;
+        let value;
+        if (closing) {
+          // Continue the release velocity, easing to rest only once off screen.
+          const tangent = Math.min(target - from, Math.max(0, velocity) * duration);
+          value = from + (target - from) * (3*u*u - 2*u*u*u) + tangent * (u*u*u - 2*u*u + u);
+        } else {
+          const t = duration * u / 1000, x = from - target, damping = 20, frequency = 9;
+          value = target + Math.exp(-damping*t) * (x*Math.cos(frequency*t) + (velocity*1000+damping*x)/frequency*Math.sin(frequency*t));
+        }
+        if (i === 48) value = target;
+        frames.push({transform:transform(value), offset:u});
+        shades.push({opacity:shade(value), offset:u});
+      }
+      sheet.classList.add('sheet-settling');
+      mask.style.willChange = 'opacity';
+      motion = sheet.animate(frames, {duration, easing:'linear', fill:'forwards'});
+      if (mask.dataset.owner === sheet.id) shadeMotion = mask.animate(shades, {duration, easing:'linear', fill:'forwards'});
+      motion.finished.then(complete).catch(() => {});
+    }
+    function dismiss() {
+      if (!sheet.open || phase === 'closing') return;
+      stopMotion();
+      drag = null;
+      height = sheet.getBoundingClientRect().height;
+      settle(height + 24, 1.5, true);
+    }
+    sheetControllers.set(sheet, {
+      show() {
+        const alreadyOpen = sheet.open;
+        stopMotion();
+        if (!alreadyOpen) { try { sheet.showModal(); } catch { sheet.setAttribute('open', ''); } }
+        height = sheet.getBoundingClientRect().height;
+        mask.dataset.owner = sheet.id; mask.hidden = false;
+        paint(alreadyOpen ? offset : height + 24);
+        settle(0);
+      },
+      dismiss
+    });
+    function begin(point, event, kind) {
+      if (drag) { finish(true); return; }
+      if (!sheet.open || window.matchMedia('(min-width:800px)').matches || event.target.closest(interactive)) return;
+      const rect = sheet.getBoundingClientRect();
+      if (point.clientX < rect.left || point.clientX > rect.right || point.clientY < rect.top || point.clientY > rect.bottom) return;
+      const header = !!event.target.closest('.sheet-handle, .sheet-top') || point.clientY <= rect.top + 80;
+      if (!header && sheet.scrollTop > 0) return;
+      stopMotion();
+      height = rect.height;
+      phase = 'dragging';
+      drag = {kind, header, id:kind === 'touch' ? point.identifier : point.pointerId, x:point.clientX, y:point.clientY, dy:0, initial:offset, viewportWidth:window.innerWidth, lastY:point.clientY, lastMoved:performance.now(), velocity:0, locked:false};
+      // Claim the grip immediately so iOS does not start native scrolling first.
+      if (kind === 'touch' && header && event.cancelable) event.preventDefault();
+    }
+    function finish(cancelled = false) {
+      if (!drag) return;
+      const current = drag;
+      drag = null;
+      if (current.locked) {
+        suppressClickUntil = performance.now() + 400;
+        if (frame) { cancelAnimationFrame(frame); frame = 0; }
+        paint(offset);
+        const velocity = performance.now() - current.lastMoved < 90 ? current.velocity : 0;
+        const threshold = Math.min(120, height * .26);
+        const flick = offset > 20 && velocity > .55 && offset + velocity * 160 > threshold;
+        const closing = !cancelled && (offset >= threshold || flick);
+        settle(closing ? height + 24 : 0, velocity, closing);
+      } else if (Math.abs(offset) > .5) settle(0);
+      else phase = 'idle';
+      if (current.kind === 'pointer' && sheet.hasPointerCapture?.(current.id)) sheet.releasePointerCapture(current.id);
+    }
+    sheet.addEventListener('pointerdown', event => {
+      // A touch gesture has its own lifecycle; pointercancel must not cancel it.
+      if (event.pointerType === 'touch' || performance.now() < ignorePointerUntil) return;
+      suppressClickUntil = 0;
+      if (event.isPrimary && event.button === 0) begin(event, event, 'pointer');
+    });
+    function move(point, event) {
+      if (!drag) return;
+      const dx = point.clientX - drag.x, dy = point.clientY - drag.y;
+      if (!drag.locked) {
+        if ((!drag.header && dy < -4) || (Math.abs(dx) > 8 && Math.abs(dx) >= Math.abs(dy))) { finish(true); return; }
+        // Cancel the FIRST downward touchmove, before Safari takes over scrolling.
+        if (dy > 0 && dy > Math.abs(dx) && event.cancelable) event.preventDefault();
+        if (Math.abs(dy) < 4 || Math.abs(dy) < Math.abs(dx) * 1.2) return;
+        drag.locked = true;
+        if (drag.kind === 'pointer') sheet.setPointerCapture?.(drag.id);
+        sheet.classList.add('sheet-dragging');
+      }
+      if (event.cancelable) event.preventDefault();
+      const now = performance.now(), delta = point.clientY - drag.lastY;
+      if (Math.abs(delta) > .25) {
+        const elapsed = Math.max(8, now - drag.lastMoved);
+        drag.velocity = .65 * delta / elapsed + .35 * drag.velocity;
+        drag.lastY = point.clientY; drag.lastMoved = now;
+      }
+      drag.dy = dy;
+      const raw = drag.initial + dy;
+      offset = raw < 0 ? -Math.min(22, Math.sqrt(-raw) * 1.7) : raw;
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; paint(offset); });
+    }
+    sheet.addEventListener('touchstart', event => {
+      ignorePointerUntil = performance.now() + 800;
+      suppressClickUntil = 0;
+      if (event.touches.length !== 1) { finish(true); return; }
+      begin(event.touches[0], event, 'touch');
+    }, {passive:false});
+    sheet.addEventListener('touchmove', event => {
+      if (drag?.kind !== 'touch') return;
+      if (event.touches.length !== 1) { finish(true); return; }
+      const point = [...event.touches].find(t => t.identifier === drag.id);
+      if (point) move(point, event);
+    }, {passive:false});
+    sheet.addEventListener('touchend', event => {
+      if (drag?.kind !== 'touch') return;
+      const point = [...event.changedTouches].find(t => t.identifier === drag.id);
+      if (point) { move(point, event); finish(); }
+    }, {passive:false});
+    sheet.addEventListener('touchcancel', () => { if (drag?.kind === 'touch') finish(true); }, {passive:true});
+    sheet.addEventListener('pointermove', event => { if (drag?.kind === 'pointer' && event.pointerId === drag.id) move(event, event); }, {passive:false});
+    sheet.addEventListener('pointerup', event => { if (drag?.kind === 'pointer' && event.pointerId === drag.id) { move(event, event); finish(); } });
+    sheet.addEventListener('pointercancel', event => { if (drag?.kind === 'pointer' && event.pointerId === drag.id) finish(true); });
+    sheet.addEventListener('lostpointercapture', event => { if (drag?.kind === 'pointer' && event.pointerId === drag.id) finish(true); });
+    sheet.addEventListener('close', () => { if (!sheet.open) cleanup(); });
+    sheet.addEventListener('click', event => {
+      if (performance.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+      const rect = sheet.getBoundingClientRect();
+      if (event.target === sheet && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dismiss();
+    }, true);
+    sheet.querySelector('.sheet-handle').addEventListener('click', dismiss);
+    window.addEventListener('resize', () => { if (drag && window.innerWidth !== drag.viewportWidth) finish(true); }, {passive:true});
+    window.addEventListener('blur', () => finish(true));
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) return;
+      finish(true);
+      const closing = phase === 'closing';
+      stopMotion(false);
+      if (closing) { close(); cleanup(); }
+      else if (sheet.open) {
+        paint(0); phase = 'idle';
+        if (mask.dataset.owner === sheet.id) mask.style.removeProperty('will-change');
+      }
+    });
   }
 
   function draftKey(id) {
@@ -1304,11 +1600,7 @@
 
   function openSettings() {
     populateSettings();
-    try {
-      els.settings.showModal();
-    } catch (_error) {
-      els.settings.setAttribute('open', '');
-    }
+    presentSheet(els.settings);
   }
 
   async function applySettings() {
@@ -1319,7 +1611,7 @@
     appState.selected.effort = effort;
     appState.selected.cwd = els.project.value;
     if (!appState.currentId) {
-      els.settings.close();
+      dismissSheet(els.settings);
       updateComposerState();
       showToast('新对话会使用这组配置');
       return;
@@ -1335,7 +1627,7 @@
         appState.currentThread = updated;
         appState.threadCache.set(appState.currentId, appState.currentThread);
       }
-      els.settings.close();
+      dismissSheet(els.settings);
       updateComposerState();
       renderThreadList();
       showToast('对话设置已更新');
@@ -1499,6 +1791,36 @@
   }
 
   function requestKey(id,threadId=appState.currentId){return threadId+':'+id;}
+  function readDismissedQuestions() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem('codex-mobile-dismissed-questions') || '[]');
+      return new Set(Array.isArray(saved) ? saved.filter(key => typeof key === 'string' && key.length < 1024).slice(-200) : []);
+    } catch { return new Set(); }
+  }
+
+  function questionCanDismiss(request) {
+    return !request.submitted && !requestIsApproval(request) && requestQuestions(request).length > 0;
+  }
+
+  function saveDismissedQuestions() {
+    appState.dismissedQuestions = new Set([...appState.dismissedQuestions].slice(-200));
+    try { window.localStorage.setItem('codex-mobile-dismissed-questions', JSON.stringify([...appState.dismissedQuestions])); } catch {}
+  }
+
+  function dismissQuestion(request) {
+    if (!questionCanDismiss(request) || appState.submittingRequests.has(requestKey(request.id))) return;
+    appState.dismissedQuestions.add(requestKey(request.id));
+    saveDismissedQuestions();
+    renderRequests(appState.currentThread, {force:true});
+    showToast('已收起，未提交回答');
+  }
+
+  function restoreQuestions() {
+    for (const request of appState.currentThread?.requests || []) appState.dismissedQuestions.delete(requestKey(request.id));
+    saveDismissedQuestions();
+    renderRequests(appState.currentThread, {force:true});
+  }
+
   function renderRequest(request) {
     const section=document.createElement('section');section.className='request-card';
     const heading=document.createElement('h3');heading.textContent=request.submitted?'✓ 已回答':requestIsApproval(request)?'需要确认':'需要你的回答';section.append(heading);
@@ -1507,6 +1829,13 @@
     const method=String(request.method||'').toLowerCase();
     if(!questions.length&&!method.includes('command')&&!method.includes('file')){const note=document.createElement('p');note.textContent='这类请求请在电脑上的 Codex 中处理。';section.append(note);return section;}
     const busy=appState.submittingRequests.has(requestKey(request.id));
+    if(questionCanDismiss(request)) {
+      const head=document.createElement('div');head.className='request-heading';head.append(heading);
+      const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='icon-button request-dismiss';dismiss.disabled=busy;
+      dismiss.setAttribute('aria-label','收起问题，暂不回答');dismiss.title='暂不回答';
+      dismiss.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M7 17 17 7"/></svg>';
+      dismiss.onclick=()=>dismissQuestion(request);head.append(dismiss);section.prepend(head);
+    }
     if(questions.length){
       const answers=requestAnswersFor(request.id);
       questions.forEach((question,index)=>{
@@ -1554,9 +1883,14 @@
   }
 
   function renderRequests(thread,options={}) {
-    const requests = (thread && Array.isArray(thread.requests) ? thread.requests : [])
+    const pending = (thread && Array.isArray(thread.requests) ? thread.requests : [])
       .filter(r=>!appState.submittedRequests.has(requestKey(r.id)));
-    const signature=JSON.stringify([appState.currentId,requests,requests.map(r=>appState.submittingRequests.has(requestKey(r.id)))]);
+    const hidden = pending.filter(r=>questionCanDismiss(r)&&appState.dismissedQuestions.has(requestKey(r.id)));
+    const requests = pending.filter(r=>!hidden.includes(r));
+    els.restoreQuestions.hidden = !hidden.length;
+    els.restoreQuestions.textContent = hidden.length ? `已收起 ${hidden.length} 个问题` : '';
+    els.restoreQuestions.setAttribute('aria-label', `查看已收起的问题（${hidden.length}）`);
+    const signature=JSON.stringify([appState.currentId,requests,hidden.length,requests.map(r=>appState.submittingRequests.has(requestKey(r.id)))]);
     if(!options.force&&signature===appState.requestsSignature)return;
     const previousScroll=els.requests.scrollTop;
     const previousIds=els.requests.dataset.requestIds;
@@ -1645,6 +1979,10 @@
     els.menu.addEventListener('click', openDrawer);
     els.closeDrawer.addEventListener('click', closeDrawer);
     els.backdrop.addEventListener('click', closeDrawer);
+    bindDrawerGestures();
+    bindSheetGestures(els.settings, () => els.settings.close());
+    bindSheetGestures(els.usageDialog, closeUsageDialog);
+    els.restoreQuestions.addEventListener('click', restoreQuestions);
     els.drawerNew.addEventListener('click', ()=>newDraft());
     els.newButton.addEventListener('click', ()=>newDraft());
     els.more.addEventListener('click', openSettings);
@@ -1684,9 +2022,9 @@
     els.pairForm.addEventListener('submit', submitPairing);
     els.pairing.addEventListener('cancel', (event) => event.preventDefault());
     document.querySelectorAll('.close-sheet').forEach((button) => {
-      button.addEventListener('click', () => els.settings.close());
+      button.addEventListener('click', () => dismissSheet(els.settings));
     });
-    els.settings.addEventListener('cancel', (event) => event.preventDefault());
+    els.settings.addEventListener('cancel', (event) => { event.preventDefault(); dismissSheet(els.settings); });
     els.usageOpen.addEventListener('click', openUsageDialog);
     els.usageClose.addEventListener('click', closeUsageDialogFromUi);
     els.usageDialog.addEventListener('cancel', (event) => {
